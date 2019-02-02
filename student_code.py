@@ -129,6 +129,65 @@ class KnowledgeBase(object):
         ####################################################
         # Student code goes here
         
+        # for is shorthand for fact_or_rule
+        if isinstance(fact_or_rule, Rule):
+            if fact_or_rule not in self.rules: #for is not a fact in the kb
+                return None
+            else:
+                if fact_or_rule.asserted == False and len(fact_or_rule.supported_by) == 0: #this section removes rules that are no longer asserted or supported - ONLY the result of a recursive call
+                    fact_or_rule = self._get_rule(fact_or_rule)
+                    for f in fact_or_rule.supports_facts: #iterate through the facts that for supports, and remove its support
+                        f = self._get_fact(f)
+                        for fpair in f.supported_by:
+                            if fact_or_rule in fpair:
+                                f.supported_by.remove(fpair)
+                                fpair[1].supports_facts.remove(f)
+                        if (len(f.supported_by) == 0) and (f.asserted != True): #if the fact is not asserted AND no longer has other facts to support it, then it can also be removed (implemented as a recursive call of retract)
+                            self.kb_retract(f)
+
+                    for r in fact_or_rule.supports_rules: #iterate through the rules that for supports, and remove its support
+                        r = self._get_rule(r)
+                        for rpair in r.supported_by:
+                            if fact_or_rule in rpair:
+                                r.supported_by.remove(rpair)
+                                rpair[1].supports_rules.remove(r)
+                        if (len(r.supported_by) == 0) and (r.asserted != True): #if the rule is not asserted AND no longer has other facts to support it, then it can also be removed (implemented as a recursive call of retract)
+                            self.kb_retract(r)
+                    self.rules.remove(fact_or_rule)
+                else:
+                    return None #asserted rules or rules that still have support cannot be changed
+
+        else: #for is a Fact
+            if fact_or_rule not in self.facts: #for is not a fact in the kb
+                return None
+            else:
+                fact_or_rule = self._get_fact(fact_or_rule)
+                if fact_or_rule.asserted: #make sure that the fact is changed to be unasserted
+                    fact_or_rule.asserted = False
+                if len(fact_or_rule.supported_by) == 0: #for is not asserted anymore, and has no support, should be removed
+                    for f in fact_or_rule.supports_facts:
+                        f = self._get_fact(f)
+                        for fpair in f.supported_by:
+                            if fact_or_rule in fpair:
+                                f.supported_by.remove(fpair)
+                                fpair[1].supports_facts.remove(f)
+                        if (len(f.supported_by) == 0) and (f.asserted != True): #if the fact is not asserted AND no longer has other facts to support it, then it can also be removed (implemented as a recursive call of retract)
+                           self.kb_retract(f)
+
+                    for r in fact_or_rule.supports_rules:
+                        r = self._get_rule(r)
+                        for rpair in r.supported_by:
+                            if fact_or_rule in rpair:
+                                r.supported_by.remove(rpair)
+                                rpair[1].supports_rules.remove(r)
+                        if (len(r.supported_by) == 0) and (r.asserted != True): #if the rule is not asserted AND no longer has other facts to support it, then it can also be removed (implemented as a recursive call of retract)
+                            self.kb_retract(r)
+                    self.facts.remove(fact_or_rule)
+                else: #for is not asserted anymore, but still has support, should not be removed
+                    return None
+                    
+
+        
 
 class InferenceEngine(object):
     def fc_infer(self, fact, rule, kb):
@@ -146,3 +205,29 @@ class InferenceEngine(object):
             [fact.statement, rule.lhs, rule.rhs])
         ####################################################
         # Student code goes here
+        #get the first rule on the left hand side
+        first_rule = rule.lhs[0]
+
+        binding = match(first_rule,fact.statement)
+        #rule.rhs is always length 1
+        if binding:
+            observation = instantiate(rule.rhs, binding)
+            if len(rule.lhs) > 1:
+                #observation must be a rule 
+                rest_of_lhs = []
+                for r in rule.lhs[1:]:
+                    rest_of_lhs.append(instantiate(r, binding))
+                new_rule = Rule([rest_of_lhs, observation], [(fact, rule)])
+                #if the conditions on the left are met, then the observation is true (rule.rhs -> (first rule, fact))
+                fact.supports_rules.append(new_rule)
+                rule.supports_rules.append(new_rule)
+                kb.kb_assert(new_rule)
+            else: #observation must be a fact
+                new_fact = Fact(observation, [(fact, rule)])
+                fact.supports_facts.append(new_fact)
+                rule.supports_facts.append(new_fact)
+                kb.kb_assert(new_fact)
+                #is an inferred fact
+            return None
+        else:
+            return None
